@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Control de clases</title>
+<style>
+  :root{--accent:#2b8cff;--ok:#4caf50;--danger:#ff6b6b;}
+  body{font-family:Inter,Segoe UI,Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fafafa}
+  .card{width:420px;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(10,10,20,0.06);padding:28px;text-align:center}
+  h1{font-size:20px;margin:0 0 8px}
+  .big{font-size:64px;font-weight:700;margin:6px 0;color:#111}
+  .muted{color:#666;font-size:13px;margin-bottom:12px}
+  .bar{height:12px;background:#eee;border-radius:8px;overflow:hidden;margin:16px 0}
+  .bar > .fill{height:100%;width:0%;transition:width .4s ease;background:linear-gradient(90deg,var(--ok),#98f0a6)}
+  .btn{display:inline-block;padding:12px 20px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+  .btn[disabled]{opacity:.6;cursor:not-allowed}
+  .secondary{background:#fff;border:1px solid #ddd;color:#333;padding:10px 14px}
+  .meta{font-size:12px;color:#777;margin-top:8px}
+  .log{margin-top:14px;text-align:left;max-height:120px;overflow:auto;padding:8px;border-radius:8px;background:#fbfbfb;border:1px solid #f1f1f1}
+  .log-item{font-size:13px;padding:6px 0;border-bottom:1px dashed #eee}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Control de clases</h1>
+    <div class="muted">Clases restantes</div>
+    <div class="big" id="remaining">—</div>
+
+    <div class="bar" title="Progreso">
+      <div id="fill" class="fill"></div>
+    </div>
+
+    <button id="markBtn" class="btn">Registrar clase ✓</button>
+    <button id="refreshBtn" class="secondary" style="margin-left:8px">Actualizar</button>
+
+    <div class="meta" id="meta">Cargando...</div>
+
+    <div class="log" id="log"></div>
+  </div>
+
+<script>
+/* CONFIG - reemplaza estas URLs por las tuyas (desde n8n) */
+const MARK_URL = "https://MEU-N8N-URL/webhook/mark?token=REEMPLAZA_TOKEN";
+const STATUS_URL = "https://MEU-N8N-URL/webhook/status?token=REEMPLAZA_TOKEN";
+/* fin config */
+
+const markBtn = document.getElementById('markBtn');
+const refreshBtn = document.getElementById('refreshBtn');
+const remainingEl = document.getElementById('remaining');
+const fillEl = document.getElementById('fill');
+const metaEl = document.getElementById('meta');
+const logEl = document.getElementById('log');
+
+let total = 16; // ajustar si tu total es distinto
+let pollingInterval = 4000; // ms
+
+async function fetchStatus(){
+  try {
+    const res = await fetch(STATUS_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error('Status fetch failed: ' + res.status);
+    const data = await res.json();
+    updateUI(data);
+  } catch(err){
+    metaEl.textContent = 'Error al obtener estado.';
+    console.error(err);
+  }
+}
+
+function updateUI(data){
+  // data: { remaining, total, lastEvents: [{index,timestamp,notes}] }
+  if(!data) return;
+  total = Number(data.total || total);
+  const rem = Number(data.remaining || 0);
+  remainingEl.textContent = rem;
+  const pct = total === 0 ? 0 : Math.round(((total - rem) / total) * 100);
+  fillEl.style.width = pct + '%';
+  metaEl.textContent = `Completadas: ${total - rem} / ${total}`;
+  // log (ultimos eventos)
+  logEl.innerHTML = '';
+  if(Array.isArray(data.lastEvents)){
+    data.lastEvents.slice(0,8).forEach(ev => {
+      const d = new Date(ev.timestamp).toLocaleString();
+      const idx = ev.index;
+      const notes = ev.notes ? ' — ' + ev.notes : '';
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.textContent = `#${idx} • ${d}${notes}`;
+      logEl.appendChild(div);
+    });
+  }
+}
+
+async function markClass(){
+  markBtn.disabled = true;
+  markBtn.textContent = 'Registrando...';
+  try {
+    const res = await fetch(MARK_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ who: 'profesor' }) });
+    if(!res.ok) throw new Error('Mark failed: ' + res.status);
+    const data = await res.json();
+    // actualizar UI inmediatamente con la respuesta del servidor
+    updateUI(data);
+  } catch(err){
+    alert('Error al registrar la clase. Revisa la consola.');
+    console.error(err);
+  } finally {
+    markBtn.disabled = false;
+    markBtn.textContent = 'Registrar clase ✓';
+  }
+}
+
+markBtn.addEventListener('click', markClass);
+refreshBtn.addEventListener('click', fetchStatus);
+
+// polling
+fetchStatus();
+setInterval(fetchStatus, pollingInterval);
+</script>
+</body>
+</html>
